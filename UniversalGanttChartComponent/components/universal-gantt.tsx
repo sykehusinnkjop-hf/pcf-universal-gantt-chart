@@ -46,7 +46,6 @@ export type UniversalGanttProps = {
 export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
   props
 ) => {
-  debugger;
   const [view, setView] = React.useState(props.viewMode);
   const { context } = props;
   // Events

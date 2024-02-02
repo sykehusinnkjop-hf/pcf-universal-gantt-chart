@@ -131,7 +131,6 @@ export class UniversalGanttChartComponent
         context.parameters.displayDateFormat.raw === "datetime";
 
       const fontSize = context.parameters.fontSize.raw || "14px";
-      debugger;
       //create gantt
       const gantt = React.createElement(UniversalGantt, {
         context,
@@ -170,6 +169,23 @@ export class UniversalGanttChartComponent
     }
   }
 
+  private async getParentTasks(context: ComponentFramework.Context<IInputs>, recordId: string) {
+    const finalParentIdArray: string[] = []
+    try {
+      const result: any = await context.webAPI.retrieveMultipleRecords('shi_templateprojecttaskdependency', `?$select=_shi_successortaskid_value,_shi_predecessortaskid_value&$filter=_shi_predecessortaskid_value eq  ${recordId}`)
+
+      const data = result.entities
+
+      data.forEach((element: any) => {
+        finalParentIdArray.push(element?._shi_successortaskid_value)
+      });
+
+    } catch (err: any) {
+      alert(err?.message)
+    }
+    return finalParentIdArray
+  }
+
   private async generateTasks(
     context: ComponentFramework.Context<IInputs>,
     dataset: ComponentFramework.PropertyTypes.DataSet,
@@ -189,10 +205,20 @@ export class UniversalGanttChartComponent
       const name = <string>record.getValue(this._displayNameStr);
       const start = <string>record.getValue(this._scheduledStartStr);
       const end = <string>record.getValue(this._scheduledEndStr);
-      const taskTypeOption = <string>record.getValue(this._taskTypeOption);
+
+      let dependencies: string[] = []
+
       const parentRecord = <ComponentFramework.EntityReference>(
         record.getValue(this._parentRecordStr)
       );
+
+      let taskTypeOption: TaskType = 'task'
+      if (!parentRecord) {
+         taskTypeOption = 'project'
+        } else {
+          dependencies = await this.getParentTasks(context, recordId)
+        }
+
       const progress = isProgressing
         ? Number(record.getValue(this._progressStr))
         : 0;
@@ -202,10 +228,8 @@ export class UniversalGanttChartComponent
         (c) => c.alias == this._displayColorOption
       );
       const optionLogicalName = !!optionColum ? optionColum.name : "";
-      const taskType = this.getTaskType(
-        taskTypeOption,
-        context.parameters.taskTypeMapping.raw
-      );
+      const taskType = taskTypeOption
+
       const entRef = record.getNamedReference();
       const entName = entRef.etn || <string>(<any>entRef).logicalName;
 
@@ -250,21 +274,19 @@ export class UniversalGanttChartComponent
             task.hideChildren = this._projects[taskId];
           }
         }
+
+        if (dependencies) {
+          task.dependencies = dependencies
+        }
+
         if (parentRecord) {
           const parentRecordId = parentRecord.id.guid;
           const parentRecordRef = dataset.records[parentRecordId];
-          if (parentRecordRef) {
-            const parentType = this.getTaskType(
-              <string>parentRecordRef.getValue(this._taskTypeOption),
-              context.parameters.taskTypeMapping.raw
-            );
-            if (parentType === "project") {
-              task.project = parentRecordId;
-            } else {
-              task.dependencies = [parentRecordId];
-            }
+          if (parentRecordId) {
+            task.project = parentRecordId;
           }
         }
+
         tasks.push(task);
       } catch (e) {
         throw new Error(
@@ -326,20 +348,6 @@ export class UniversalGanttChartComponent
       progressColor: progressColor,
       progressSelectedColor: progressSelectedColor,
     };
-  }
-
-  private getTaskType(
-    taskTypeOption: string,
-    taskTypeMapping: string | null
-  ): TaskType {
-    let taskType: TaskType = this._defaultTaskType;
-    if (taskTypeOption && taskTypeMapping) {
-      if (!this._taskTypeMap) {
-        this._taskTypeMap = JSON.parse(taskTypeMapping);
-      }
-      taskType = <TaskType>this._taskTypeMap[taskTypeOption];
-    }
-    return taskType;
   }
 
   private handleViewModeChange(viewMode: ViewMode) {

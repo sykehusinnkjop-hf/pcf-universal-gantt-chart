@@ -172,18 +172,65 @@ export class UniversalGanttChartComponent
   private async getParentTasks(context: ComponentFramework.Context<IInputs>, recordId: string) {
     const finalParentIdArray: string[] = []
     try {
-      const result: any = await context.webAPI.retrieveMultipleRecords('shi_templateprojecttaskdependency', `?$select=_shi_successortaskid_value,_shi_predecessortaskid_value&$filter=_shi_predecessortaskid_value eq  ${recordId}`)
+      const result: any = await context.webAPI.retrieveMultipleRecords('shi_templateprojecttaskdependency', `?$select=_shi_successortaskid_value,_shi_predecessortaskid_value&$filter=_shi_successortaskid_value eq  ${recordId}`)
 
       const data = result.entities
 
       data.forEach((element: any) => {
-        finalParentIdArray.push(element?._shi_successortaskid_value)
+        finalParentIdArray.push(element?._shi_predecessortaskid_value)
       });
 
     } catch (err: any) {
       alert(err?.message)
     }
     return finalParentIdArray
+  }
+
+  private sortRecords = (dataset: ComponentFramework.PropertyTypes.DataSet) => {
+
+    let sortedRecordIds = [...dataset.sortedRecordIds]
+
+    let children: string[] = []
+
+    // get the children
+    sortedRecordIds.forEach(guid => {
+      const parentRecord = <ComponentFramework.EntityReference>(
+        dataset.records[guid].getValue(this._parentRecordStr)
+      );
+
+      if (parentRecord) children.push(guid)
+
+    });
+
+    children.forEach(guid => {
+      let index = sortedRecordIds.findIndex(sortGuid => sortGuid === guid);
+
+      // If the child is found, remove it using splice
+      if (index !== -1) {
+        sortedRecordIds.splice(index, 1);
+      }
+
+
+    });
+
+    const finalIdList: string[] = []
+
+    sortedRecordIds.forEach(parentGuid => {
+      finalIdList.push(parentGuid)
+
+      children.forEach(childGuid => {
+        const parentRecord = <ComponentFramework.EntityReference>(
+          dataset.records[childGuid].getValue(this._parentRecordStr)
+        );
+        const parentRecordId = parentRecord.id.guid;
+        if (parentRecordId == parentGuid) {
+          finalIdList.push(childGuid)
+        }
+      });
+    });
+
+    return finalIdList
+
   }
 
   private async generateTasks(
@@ -198,6 +245,9 @@ export class UniversalGanttChartComponent
       progressColor: string;
       progressSelectedColor: string;
     }[] = [];
+
+    dataset.sortedRecordIds = this.sortRecords(dataset)
+
     const isDisabled = context.parameters.displayMode.raw === "readonly";
     let tasks: Task[] = [];
     for (const recordId of dataset.sortedRecordIds) {
@@ -214,10 +264,10 @@ export class UniversalGanttChartComponent
 
       let taskTypeOption: TaskType = 'task'
       if (!parentRecord) {
-         taskTypeOption = 'project'
-        } else {
-          dependencies = await this.getParentTasks(context, recordId)
-        }
+        taskTypeOption = 'project'
+      } else {
+        dependencies = await this.getParentTasks(context, recordId)
+      }
 
       const progress = isProgressing
         ? Number(record.getValue(this._progressStr))
@@ -237,13 +287,15 @@ export class UniversalGanttChartComponent
         (e) => e.entityLogicalName === entName
       );
 
+
+
       if (!entityColorTheme || colorText || optionLogicalName) {
         entityColorTheme = await this.generateColorTheme(
           context,
           entName,
           colorText,
           optionValue,
-          optionLogicalName
+          optionLogicalName,
         );
         entityTypesAndColors.push(entityColorTheme);
       }
@@ -302,7 +354,7 @@ export class UniversalGanttChartComponent
     entName: string,
     colorText: string,
     optionValue: string,
-    optionLogicalName: string
+    optionLogicalName: string,
   ) {
     let entityColor = this._defaultEntityColor;
     //Model App

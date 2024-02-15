@@ -186,52 +186,72 @@ export class UniversalGanttChartComponent
     return finalParentIdArray
   }
 
-  private sortRecords = (dataset: ComponentFramework.PropertyTypes.DataSet) => {
+  private sortRecords(dataset: ComponentFramework.PropertyTypes.DataSet): string[] {
+    const getParentId = (guid: string): string | null => {
+      const parentRecord = dataset.records[guid].getValue(this._parentRecordStr) as ComponentFramework.EntityReference;
+      return parentRecord ? parentRecord.id.guid : null;
+    };
 
-    let sortedRecordIds = [...dataset.sortedRecordIds]
+    const buildHierarchy = (parentId: string | null, level: number = 0): string[] => {
+      return dataset.sortedRecordIds
+        .filter(guid => getParentId(guid) === parentId)
+        .reduce((acc: string[], guid) => {
+          acc.push(guid); // Add the current item
+          const children = buildHierarchy(guid, level + 1); // Recursively add children
+          return acc.concat(children); // Concatenate the children to the accumulator
+        }, []);
+    };
 
-    let children: string[] = []
-
-    // get the children
-    sortedRecordIds.forEach(guid => {
-      const parentRecord = <ComponentFramework.EntityReference>(
-        dataset.records[guid].getValue(this._parentRecordStr)
-      );
-
-      if (parentRecord) children.push(guid)
-
-    });
-
-    children.forEach(guid => {
-      let index = sortedRecordIds.findIndex(sortGuid => sortGuid === guid);
-
-      // If the child is found, remove it using splice
-      if (index !== -1) {
-        sortedRecordIds.splice(index, 1);
-      }
-
-
-    });
-
-    const finalIdList: string[] = []
-
-    sortedRecordIds.forEach(parentGuid => {
-      finalIdList.push(parentGuid)
-
-      children.forEach(childGuid => {
-        const parentRecord = <ComponentFramework.EntityReference>(
-          dataset.records[childGuid].getValue(this._parentRecordStr)
-        );
-        const parentRecordId = parentRecord.id.guid;
-        if (parentRecordId == parentGuid) {
-          finalIdList.push(childGuid)
-        }
-      });
-    });
-
-    return finalIdList
-
+    return buildHierarchy(null); // Start with top-level items (those with no parent)
   }
+
+  // private sortRecords = (dataset: ComponentFramework.PropertyTypes.DataSet) => {
+  //   const lengthStart = dataset.sortedRecordIds.length
+  //   let sortedRecordIds = [...dataset.sortedRecordIds]
+
+  //   let children: string[] = []
+
+  //   // get the children
+  //   sortedRecordIds.forEach(guid => {
+  //     const parentRecord = <ComponentFramework.EntityReference>(
+  //       dataset.records[guid].getValue(this._parentRecordStr)
+  //     );
+
+  //     if (parentRecord) children.push(guid)
+
+  //   });
+
+  //   children.forEach(guid => {
+  //     let index = sortedRecordIds.findIndex(sortGuid => sortGuid === guid);
+
+  //     // If the child is found, remove it using splice
+  //     if (index !== -1) {
+  //       sortedRecordIds.splice(index, 1);
+  //     }
+
+
+  //   });
+
+  //   const finalIdList: string[] = []
+
+  //   sortedRecordIds.forEach(parentGuid => {
+  //     finalIdList.push(parentGuid)
+
+  //     children.forEach(childGuid => {
+  //       const parentRecord = <ComponentFramework.EntityReference>(
+  //         dataset.records[childGuid].getValue(this._parentRecordStr)
+  //       );
+  //       const parentRecordId = parentRecord.id.guid;
+  //       if (parentRecordId == parentGuid) {
+  //         finalIdList.push(childGuid)
+  //       }
+  //     });
+  //   });
+
+  //   if (lengthStart !== finalIdList.length) console.log('DROPPED ONE ERROR ERROR')
+  //   return finalIdList
+
+  // }
 
   private async generateTasks(
     context: ComponentFramework.Context<IInputs>,
@@ -265,9 +285,9 @@ export class UniversalGanttChartComponent
       let taskTypeOption: TaskType = 'task'
       if (!parentRecord) {
         taskTypeOption = 'project'
-      } else {
-        dependencies = await this.getParentTasks(context, recordId)
       }
+
+      dependencies = await this.getParentTasks(context, recordId)
 
       const progress = isProgressing
         ? Number(record.getValue(this._progressStr))
@@ -337,6 +357,7 @@ export class UniversalGanttChartComponent
           if (parentRecordId) {
             task.project = parentRecordId;
           }
+          this.checkIfParentHasParent(dataset, parentRecordId)
         }
 
         tasks.push(task);
@@ -347,6 +368,17 @@ export class UniversalGanttChartComponent
       }
     }
     return tasks;
+  }
+
+  private checkIfParentHasParent(dataset: ComponentFramework.PropertyTypes.DataSet, parentRecordId: string) {
+    const record = dataset.records[parentRecordId]
+
+    const parentRecord = <ComponentFramework.EntityReference>(
+      record.getValue(this._parentRecordStr)
+    );
+
+    if (parentRecord) console.log('HAS A PARENT ALERT ALERT **')
+
   }
 
   private async generateColorTheme(

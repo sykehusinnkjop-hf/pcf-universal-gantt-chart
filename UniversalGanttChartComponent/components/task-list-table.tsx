@@ -45,7 +45,9 @@ export const createTaskListLocal = (
           return (
             <div
               className="Gantt-Task-List_Row"
-              style={{ height: rowHeight }}
+              style={{
+                height: rowHeight,
+              }}
               key={`${t.id}row`}
               onClick={() => {
                 if (selectedTaskId === t.id) {
@@ -75,7 +77,7 @@ export const createTaskListLocal = (
                 }}
                 title={t.name}
               >
-                <div className="Gantt-Task-List_Name-Container">
+                <div className="Gantt-Task-List_Name-Container" style={{ paddingLeft: t.indent }}>
                   <div
                     className={
                       expanderSymbol

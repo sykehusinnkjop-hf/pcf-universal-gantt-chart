@@ -205,53 +205,46 @@ export class UniversalGanttChartComponent
     return buildHierarchy(null); // Start with top-level items (those with no parent)
   }
 
-  // private sortRecords = (dataset: ComponentFramework.PropertyTypes.DataSet) => {
-  //   const lengthStart = dataset.sortedRecordIds.length
-  //   let sortedRecordIds = [...dataset.sortedRecordIds]
+  private hasChildren(dataset: ComponentFramework.PropertyTypes.DataSet, parentId: string): boolean {
+    const parentRecordStr = this._parentRecordStr; // Assume this is defined somewhere in your class
 
-  //   let children: string[] = []
+    // Iterate through all records to check if any has the given parentId as its parent
+    for (const recordId in dataset.records) {
+      const record = dataset.records[recordId];
+      const parentRef = record.getValue(parentRecordStr) as ComponentFramework.EntityReference;
 
-  //   // get the children
-  //   sortedRecordIds.forEach(guid => {
-  //     const parentRecord = <ComponentFramework.EntityReference>(
-  //       dataset.records[guid].getValue(this._parentRecordStr)
-  //     );
+      // Check if the parentRef exists and matches the parentId
+      if (parentRef && parentRef.id.guid === parentId) {
+        return true; // A child is found, return true
+      }
+    }
 
-  //     if (parentRecord) children.push(guid)
+    // No children found for the given parentId
+    return false;
+  }
 
-  //   });
+  private findHierarchyLevel(dataset: ComponentFramework.PropertyTypes.DataSet, recordId: string): number {
+    const getParentId = (guid: string): string | null => {
+      const record = dataset.records[guid];
+      if (!record) {
+        return null; // Record not found, may be at top level or invalid ID
+      }
+      const parentRecord = record.getValue(this._parentRecordStr) as ComponentFramework.EntityReference;
+      return parentRecord ? parentRecord.id.guid : null;
+    };
 
-  //   children.forEach(guid => {
-  //     let index = sortedRecordIds.findIndex(sortGuid => sortGuid === guid);
+    const getLevel = (guid: string, currentLevel: number = 0): number => {
+      const parentId = getParentId(guid);
+      if (!parentId) {
+        // No parent found, this is a top-level item
+        return currentLevel;
+      }
+      // Recursively check the parent's level, incrementing the level count
+      return getLevel(parentId, currentLevel + 1);
+    };
 
-  //     // If the child is found, remove it using splice
-  //     if (index !== -1) {
-  //       sortedRecordIds.splice(index, 1);
-  //     }
-
-
-  //   });
-
-  //   const finalIdList: string[] = []
-
-  //   sortedRecordIds.forEach(parentGuid => {
-  //     finalIdList.push(parentGuid)
-
-  //     children.forEach(childGuid => {
-  //       const parentRecord = <ComponentFramework.EntityReference>(
-  //         dataset.records[childGuid].getValue(this._parentRecordStr)
-  //       );
-  //       const parentRecordId = parentRecord.id.guid;
-  //       if (parentRecordId == parentGuid) {
-  //         finalIdList.push(childGuid)
-  //       }
-  //     });
-  //   });
-
-  //   if (lengthStart !== finalIdList.length) console.log('DROPPED ONE ERROR ERROR')
-  //   return finalIdList
-
-  // }
+    return getLevel(recordId);
+  }
 
   private async generateTasks(
     context: ComponentFramework.Context<IInputs>,
@@ -283,11 +276,13 @@ export class UniversalGanttChartComponent
       );
 
       let taskTypeOption: TaskType = 'task'
-      if (!parentRecord) {
+      if (this.hasChildren(dataset, recordId)) {
         taskTypeOption = 'project'
       }
 
       dependencies = await this.getParentTasks(context, recordId)
+
+      const hierarchyLevel = this.findHierarchyLevel(dataset, recordId)
 
       const progress = isProgressing
         ? Number(record.getValue(this._progressStr))
@@ -309,13 +304,14 @@ export class UniversalGanttChartComponent
 
 
 
-      if (!entityColorTheme || colorText || optionLogicalName) {
+      if (!entityColorTheme || colorText || optionLogicalName || taskType === 'project') {
         entityColorTheme = await this.generateColorTheme(
           context,
           entName,
           colorText,
           optionValue,
           optionLogicalName,
+          taskType
         );
         entityTypesAndColors.push(entityColorTheme);
       }
@@ -336,6 +332,7 @@ export class UniversalGanttChartComponent
           type: taskType,
           isDisabled: isDisabled,
           styles: { ...entityColorTheme },
+          indent: hierarchyLevel * 10,
         };
         if (taskType === "project") {
           const expanderState = this._projects[taskId];
@@ -357,7 +354,6 @@ export class UniversalGanttChartComponent
           if (parentRecordId) {
             task.project = parentRecordId;
           }
-          this.checkIfParentHasParent(dataset, parentRecordId)
         }
 
         tasks.push(task);
@@ -370,16 +366,6 @@ export class UniversalGanttChartComponent
     return tasks;
   }
 
-  private checkIfParentHasParent(dataset: ComponentFramework.PropertyTypes.DataSet, parentRecordId: string) {
-    const record = dataset.records[parentRecordId]
-
-    const parentRecord = <ComponentFramework.EntityReference>(
-      record.getValue(this._parentRecordStr)
-    );
-
-    if (parentRecord) console.log('HAS A PARENT ALERT ALERT **')
-
-  }
 
   private async generateColorTheme(
     context: ComponentFramework.Context<IInputs>,
@@ -387,6 +373,7 @@ export class UniversalGanttChartComponent
     colorText: string,
     optionValue: string,
     optionLogicalName: string,
+    taskType: string,
   ) {
     let entityColor = this._defaultEntityColor;
     //Model App
@@ -416,8 +403,9 @@ export class UniversalGanttChartComponent
     }
 
     const colors = generate(entityColor);
-    const backgroundColor =
-      context.parameters.customBackgroundColor.raw || colors[2];
+    let backgroundColor = context.parameters.customBackgroundColor.raw || colors[2];
+
+    if (taskType === 'project') { backgroundColor = '#ffa940' }
     const backgroundSelectedColor =
       context.parameters.customBackgroundSelectedColor.raw || colors[3];
     const progressColor =

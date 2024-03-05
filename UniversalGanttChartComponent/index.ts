@@ -10,6 +10,15 @@ import { isErrorDialogOptions } from "./helper";
 
 type DataSet = ComponentFramework.PropertyTypes.DataSet;
 
+type StartEnd = {
+  start: any
+  end: any
+}
+
+type TParentTaskCache = {
+  [type: string]: any
+}
+
 export class UniversalGanttChartComponent
   implements ComponentFramework.StandardControl<IInputs, IOutputs>
 {
@@ -33,6 +42,7 @@ export class UniversalGanttChartComponent
   private _projects: {
     [index: string]: boolean;
   };
+  private parentTasksCache: TParentTaskCache = {}
 
   constructor() {
     this.handleViewModeChange = this.handleViewModeChange.bind(this);
@@ -126,6 +136,7 @@ export class UniversalGanttChartComponent
       const columnWidthDay = context.parameters.columnWidthDay.raw || 0;
       const columnWidthWeek = context.parameters.columnWidthWeek.raw || 0;
       const columnWidthMonth = context.parameters.columnWidthMonth.raw || 0;
+      const columnWidthYear = 350;
 
       const includeTime =
         context.parameters.displayDateFormat.raw === "datetime";
@@ -159,6 +170,7 @@ export class UniversalGanttChartComponent
         columnWidthDay,
         columnWidthWeek,
         columnWidthMonth,
+        columnWidthYear,
         onViewChange: this.handleViewModeChange,
         onExpanderStateChange: this.handleExpanderStateChange,
       });
@@ -169,21 +181,31 @@ export class UniversalGanttChartComponent
     }
   }
 
-  private async getParentTasks(context: ComponentFramework.Context<IInputs>, recordId: string) {
+  private getParentTasks(context: ComponentFramework.Context<IInputs>, recordId: string) {
+
     const finalParentIdArray: string[] = []
     try {
-      const result: any = await context.webAPI.retrieveMultipleRecords('shi_templateprojecttaskdependency', `?$select=_shi_successortaskid_value,_shi_predecessortaskid_value&$filter=_shi_successortaskid_value eq  ${recordId}`)
+      context.webAPI.retrieveMultipleRecords('shi_templateprojecttaskdependency', `?$select=_shi_successortaskid_value,_shi_predecessortaskid_value&$filter=_shi_successortaskid_value eq  ${recordId}`).then(
+        (result) => {
 
-      const data = result.entities
+          const data = result.entities
 
-      data.forEach((element: any) => {
-        finalParentIdArray.push(element?._shi_predecessortaskid_value)
-      });
+          data.forEach((element: any) => {
+            finalParentIdArray.push(element?._shi_predecessortaskid_value)
+          });
+
+          this.parentTasksCache[recordId] = finalParentIdArray
+
+        },
+        (error) => {
+          alert(error?.message)
+        }
+      )
 
     } catch (err: any) {
-      alert(err?.message)
+
     }
-    return finalParentIdArray
+
   }
 
   private sortRecords(dataset: ComponentFramework.PropertyTypes.DataSet): string[] {
@@ -221,6 +243,51 @@ export class UniversalGanttChartComponent
 
     // No children found for the given parentId
     return false;
+  }
+
+  private findChildrenStartEndDates(dataset: ComponentFramework.PropertyTypes.DataSet, parentId: string, visited: Set<string> = new Set<string>()): StartEnd {
+    let earliestStart: string | undefined = undefined;
+    let latestEnd: string | undefined = undefined;
+
+    for (const recordId in dataset.records) {
+      //if (visited.has(recordId)) continue; // Skip already visited records to avoid infinite recursion
+      //visited.add(recordId); // Mark the current record as visited
+
+      const record = dataset.records[recordId];
+      const parentRef = record.getValue(this._parentRecordStr) as ComponentFramework.EntityReference;
+
+      // Check if the parentRef exists and matches the parentId
+      if (parentRef && parentRef.id.guid === parentId) {
+        if (!this.hasChildren(dataset, recordId)) {
+          const currentStart = record.getValue('shi_start_date') as string;
+          const currentEnd = record.getValue('shi_end_date') as string;
+
+
+          if (!earliestStart || currentStart < earliestStart) {
+            earliestStart = currentStart;
+          }
+
+          if (!latestEnd || currentEnd > latestEnd) {
+            latestEnd = currentEnd;
+          }
+        }
+        // Recursively find start and end dates for children, if any
+        if (this.hasChildren(dataset, recordId)) {
+          const result = this.findChildrenStartEndDates(dataset, recordId, visited);
+         
+          if (!earliestStart || (result.start && result.start < earliestStart)) {
+            earliestStart = result.start;
+          }
+
+          if (!latestEnd || (result.end && result.end > latestEnd)) {
+            latestEnd = result.end;
+          }
+        }
+      }
+
+    }
+
+    return { start: earliestStart, end: latestEnd };
   }
 
   private findHierarchyLevel(dataset: ComponentFramework.PropertyTypes.DataSet, recordId: string): number {
@@ -266,8 +333,8 @@ export class UniversalGanttChartComponent
     for (const recordId of dataset.sortedRecordIds) {
       const record = dataset.records[recordId];
       const name = <string>record.getValue(this._displayNameStr);
-      const start = <string>record.getValue(this._scheduledStartStr);
-      const end = <string>record.getValue(this._scheduledEndStr);
+      let start = <string>record.getValue(this._scheduledStartStr);
+      let end = <string>record.getValue(this._scheduledEndStr);
 
       let dependencies: string[] = []
 
@@ -278,9 +345,14 @@ export class UniversalGanttChartComponent
       let taskTypeOption: TaskType = 'task'
       if (this.hasChildren(dataset, recordId)) {
         taskTypeOption = 'project'
+        const result = this.findChildrenStartEndDates(dataset, recordId)
+        start = result.start
+        end = result.end
+
       }
 
-      dependencies = await this.getParentTasks(context, recordId)
+      if (recordId in this.parentTasksCache) dependencies = this.parentTasksCache[recordId]
+      this.getParentTasks(context, recordId)
 
       const hierarchyLevel = this.findHierarchyLevel(dataset, recordId)
 
@@ -304,7 +376,7 @@ export class UniversalGanttChartComponent
 
 
 
-      if (!entityColorTheme || colorText || optionLogicalName || taskType === 'project') {
+      if (!entityColorTheme || colorText || optionLogicalName || taskType === 'project' || taskType === 'task') {
         entityColorTheme = await this.generateColorTheme(
           context,
           entName,
@@ -406,6 +478,7 @@ export class UniversalGanttChartComponent
     let backgroundColor = context.parameters.customBackgroundColor.raw || colors[2];
 
     if (taskType === 'project') { backgroundColor = '#ffa940' }
+    if (taskType === 'task') { backgroundColor = '#bae637' }
     const backgroundSelectedColor =
       context.parameters.customBackgroundSelectedColor.raw || colors[3];
     const progressColor =

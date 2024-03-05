@@ -39,6 +39,7 @@ export type UniversalGanttProps = {
   columnWidthDay: number;
   columnWidthWeek: number;
   columnWidthMonth: number;
+  columnWidthYear: number;
   onViewChange: (viewMode: ViewMode) => void;
   onExpanderStateChange: (itemId: string, expanderState: boolean) => void;
 } & EventOption &
@@ -150,6 +151,9 @@ export const UniversalGantt: React.FunctionComponent<UniversalGanttProps> = (
   };
 
   switch (view) {
+    case ViewMode.Year:
+      options.columnWidth = props.columnWidthYear;
+      break;
     case ViewMode.Month:
       options.columnWidth = props.columnWidthMonth;
       break;

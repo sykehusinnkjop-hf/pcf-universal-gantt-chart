@@ -12,36 +12,43 @@ export const ViewSwitcher: React.FunctionComponent<{
         className="Gantt-Button Gantt-Button_Header"
         onClick={() => onViewChange(ViewMode.QuarterDay)}
       >
-        {context.resources.getString("Quarter_Of_Day_Name")}
+        {'KVART DAG'}
       </button>
       <div className="Gantt-Header_Separator">|</div>
       <button
         className="Gantt-Button Gantt-Button_Header"
         onClick={() => onViewChange(ViewMode.HalfDay)}
       >
-        {context.resources.getString("Half_Of_Day_Name")}
+        {'HALV DAG'}
       </button>
       <div className="Gantt-Header_Separator">|</div>
       <button
         className="Gantt-Button Gantt-Button_Header"
         onClick={() => onViewChange(ViewMode.Day)}
       >
-        {context.resources.getString("Day_Name")}
+        {'DAG'}
       </button>
       <div className="Gantt-Header_Separator">|</div>
       <button
         className="Gantt-Button Gantt-Button_Header"
         onClick={() => onViewChange(ViewMode.Week)}
       >
-        {context.resources.getString("Week_Name")}
+        {'UKE'}
       </button>
       <div className="Gantt-Header_Separator">|</div>
       <button
         className="Gantt-Button Gantt-Button_Header"
         onClick={() => onViewChange(ViewMode.Month)}
       >
-        {context.resources.getString("Month_Name")}
+        {'MÅNED'}
       </button>
+      {/* <div className="Gantt-Header_Separator">|</div>
+      <button
+        className="Gantt-Button Gantt-Button_Header"
+        onClick={() => onViewChange(ViewMode.Year)}
+      >
+        {'ÅR'}
+      </button> */}
     </div>
   );
 };
